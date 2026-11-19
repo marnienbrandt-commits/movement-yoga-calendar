@@ -118,7 +118,11 @@ def scrape() -> list[dict]:
                     # A location can legitimately have no yoga sessions in the visible week.
                     page.wait_for_timeout(3000)
                 body_text = page.locator("body").inner_text(timeout=15000)
-                parsed = parse_location_text(body_text, location, today)
+                try:
+                    parsed = parse_location_text(body_text, location, today)
+                except Exception as parse_exc:
+                    sample = "\\n".join(body_text.splitlines()[:45])
+                    raise RuntimeError(f"{parse_exc}; page text sample:\\n{sample}") from parse_exc
                 all_events.extend(parsed)
                 print(f"{location}: {len(parsed)} yoga classes")
             except Exception as exc:
