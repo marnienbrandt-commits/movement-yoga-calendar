@@ -151,3 +151,5 @@ if __name__ == "__main__":
     output = Path("calendar.ics")
     output.write_text(make_calendar(result), encoding="utf-8", newline="")
     print(f"Wrote {len(result)} classes to {output}")
+
+# Controlled publish validation run.
