@@ -1,7 +1,8 @@
 name: Update Movement yoga calendar
 
 on:
-  # Manual-only until hosting and daily refresh are enabled.
+  schedule:
+    - cron: '0 15 * * *' # Daily, 8 AM Mountain Standard Time
   workflow_dispatch:
 permissions:
   contents: write
