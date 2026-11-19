@@ -23,7 +23,7 @@ LOCATIONS = {
     "Golden": "golden",
     "RiNo": "rino",
 }
-DAY_RE = re.compile(r"^(?:SUN|MON|TUE|WED|THU|FRI|SAT)\s+(\d{1,2}),?\s+([A-Z]{3})$", re.I)
+DAY_RE = re.compile(r"^\s*(?:\d+\.\s*)?(?:##\s*)?(?:SUN|MON|TUE|WED|THU|FRI|SAT)\s+(\d{1,2}),?\s+([A-Z]{3})(?:\s*\(today\))?\s*$", re.I)
 EVENT_RE = re.compile(r"^(\d{1,2}:\d{2}[ap])\s+(\d+)\s+min\s+(.+?)\s*$", re.I)
 MONTHS = {name.upper(): number for number, name in enumerate(
     ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
