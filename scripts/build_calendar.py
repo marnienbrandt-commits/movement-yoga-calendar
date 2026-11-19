@@ -23,8 +23,8 @@ LOCATIONS = {
     "Golden": "golden",
     "RiNo": "rino",
 }
-DAY_RE = re.compile(r"^\s*(?:\d+\.\s*)?(?:##\s*)?(?:SUN|MON|TUE|WED|THU|FRI|SAT)\s+(\d{1,2}),?\s+([A-Z]{3})(?:\s*\(today\))?\s*$", re.I)
-EVENT_RE = re.compile(r"^(\d{1,2}:\d{2}[ap])\s+(\d+)\s+min\s+(.+?)\s*$", re.I)
+DAY_RE = re.compile(r"\b(?:SUN|MON|TUE|WED|THU|FRI|SAT)\s+(\d{1,2}),\s*([A-Z]{3})\b", re.I)
+EVENT_RE = re.compile(r"\b(\d{1,2}:\d{2}[ap])\s+(\d+)\s+min\s+(.+?)\s*$", re.I)
 MONTHS = {name.upper(): number for number, name in enumerate(
     ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 ) if name}
@@ -68,14 +68,14 @@ def parse_location_text(text: str, location: str, today: date) -> list[dict]:
         line = " ".join(raw_line.split()).strip()
         if not line:
             continue
-        heading = DAY_RE.match(line)
+        heading = DAY_RE.search(line)
         if heading:
             current_day = date_from_heading(int(heading.group(1)), heading.group(2), today)
             if today <= current_day <= today + timedelta(days=7):
                 saw_calendar_day = True
             continue
 
-        match = EVENT_RE.match(line)
+        match = EVENT_RE.search(line)
         if not match or current_day is None or not (today <= current_day <= today + timedelta(days=7)):
             continue
 
