@@ -1,8 +1,7 @@
 name: Update Movement yoga calendar
 
 on:
-  schedule:
-    - cron: "15 14 * * *"
+  # Daily schedule paused until the scraper is verified.
   workflow_dispatch:
   push:
     branches: [main]
