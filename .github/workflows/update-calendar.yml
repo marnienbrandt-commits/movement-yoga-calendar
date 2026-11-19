@@ -1,10 +1,7 @@
 name: Update Movement yoga calendar
 
 on:
-  # Temporary one-run trigger to inspect the public API response shape.
-  push:
-    paths:
-      - 'scripts/build_calendar.py'
+  # Manual-only while scraper is being diagnosed.
   workflow_dispatch:
 permissions:
   contents: write
