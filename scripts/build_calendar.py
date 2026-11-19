@@ -121,7 +121,7 @@ def scrape() -> list[dict]:
                 if "json" in ctype.lower():
                     try:
                         data = response.json()
-                        print(f"NET JSON KEYS {response.url}: {list(data.keys()) if isinstance(data, dict) else type(data).__name__}")
+                        print(f"NET JSON KEYS {response.url}: {list(data.keys()) if isinstance(data, dict) else type(data).__name__}", flush=True)
                         if isinstance(data, dict):
                             for key, value in data.items():
                                 if isinstance(value, list):
