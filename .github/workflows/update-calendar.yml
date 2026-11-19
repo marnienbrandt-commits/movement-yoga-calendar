@@ -3,12 +3,6 @@ name: Update Movement yoga calendar
 on:
   # Daily schedule paused until the scraper is verified.
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "scripts/build_calendar.py"
-      - ".github/workflows/update-calendar.yml"
-
 permissions:
   contents: write
 
