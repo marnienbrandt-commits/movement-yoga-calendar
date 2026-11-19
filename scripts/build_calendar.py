@@ -7,13 +7,12 @@ No credentials or private account data are used.
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import sync_playwright
 
 TZ = ZoneInfo("America/Denver")
 LOCATIONS = {
@@ -24,13 +23,6 @@ LOCATIONS = {
     "Golden": "golden",
     "RiNo": "rino",
 }
-DAY_RE = re.compile(r"\b(?:SUN|MON|TUE|WED|THU|FRI|SAT)\s+(\d{1,2}),\s*([A-Z]{3})\b", re.I)
-EVENT_RE = re.compile(r"\b(\d{1,2}:\d{2}[ap])\s+(\d+)\s+min\s+(.+?)\s*$", re.I)
-MONTHS = {name.upper(): number for number, name in enumerate(
-    ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-) if name}
-
-
 def ics_escape(value: str) -> str:
     return (value.replace("\\", "\\\\").replace(";", "\\;")
             .replace(",", "\\,").replace("\r", "").replace("\n", "\\n"))
@@ -50,125 +42,69 @@ def fold_ics_line(line: str) -> str:
     return "\r\n".join(chunks)
 
 
-def date_from_heading(day: int, month_name: str, today: date) -> date:
-    month = MONTHS[month_name.upper()]
-    year = today.year
-    candidate = date(year, month, day)
-    if candidate < today - timedelta(days=180):
-        candidate = date(year + 1, month, day)
-    elif candidate > today + timedelta(days=180):
-        candidate = date(year - 1, month, day)
-    return candidate
-
-
-def parse_location_text(text: str, location: str, today: date) -> list[dict]:
-    events = []
-    current_day = None
-    saw_calendar_day = False
-    for raw_line in text.splitlines():
-        line = " ".join(raw_line.split()).strip()
-        if not line:
-            continue
-        heading = DAY_RE.search(line)
-        if heading:
-            current_day = date_from_heading(int(heading.group(1)), heading.group(2), today)
-            if today <= current_day <= today + timedelta(days=7):
-                saw_calendar_day = True
-            continue
-
-        match = EVENT_RE.search(line)
-        if not match or current_day is None or not (today <= current_day <= today + timedelta(days=7)):
-            continue
-
-        clock, duration, details = match.groups()
-        parsed_time = datetime.strptime(clock.lower(), "%I:%M%p").time()
-        start = datetime.combine(current_day, parsed_time, TZ)
-        events.append({
-            "location": location,
-            "start": start,
-            "end": start + timedelta(minutes=int(duration)),
-            "details": details.strip(),
-            "source": f"https://movementgyms.com/{LOCATIONS[location]}/calendar/yoga/",
-        })
-
-    if not saw_calendar_day:
-        raise RuntimeError(f"{location}: could not find the current week's calendar dates; refusing to publish incomplete data")
-    return events
-
-
 def scrape() -> list[dict]:
+    """Read Movement's public calendar JSON API, not the page's rendered UI."""
     today = datetime.now(TZ).date()
+    last_day = today + timedelta(days=7)
+    months = {(today.year, today.month), (last_day.year, last_day.month)}
     all_events: list[dict] = []
     failures = []
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
-        page = browser.new_page(locale="en-US", timezone_id="America/Denver")
-
-        # Diagnostic capture: identify the actual schedule-data request and failures.
-        def log_request(request):
-            u = request.url.lower()
-            if any(term in u for term in ("api", "calendar", "graphql", "wp-json", "schedule", "class", "portal")):
-                print(f"NET REQUEST {request.method} {request.url}")
-        def log_response(response):
-            u = response.url.lower()
-            if any(term in u for term in ("api", "calendar", "graphql", "wp-json", "schedule", "class", "portal")):
+        api = playwright.request.new_context(
+            user_agent="Mozilla/5.0 (compatible; MovementYogaCalendar/1.0)"
+        )
+        try:
+            for location, slug in LOCATIONS.items():
+                location_events = []
                 try:
-                    ctype = response.headers.get("content-type", "")
-                except Exception:
-                    ctype = ""
-                print(f"NET RESPONSE {response.status} {ctype} {response.url}")
-                if "json" in ctype.lower():
-                    try:
-                        data = response.json()
-                        print(f"NET JSON KEYS {response.url}: {list(data.keys()) if isinstance(data, dict) else type(data).__name__}", flush=True)
-                        if isinstance(data, dict):
-                            for key, value in data.items():
-                                if isinstance(value, list):
-                                    first = value[0] if value else None
-                                    print(f"NET JSON FIELD {key}: count={len(value)} first_type={type(first).__name__} first_sample={json.dumps(first, ensure_ascii=False)[:1800]}")
-                                else:
-                                    print(f"NET JSON FIELD {key}: type={type(value).__name__} sample={str(value)[:300]}")
-                    except Exception as exc:
-                        print(f"NET JSON READ ERROR {response.url}: {exc}")
-        page.on("request", log_request)
-        page.on("response", log_response)
-        page.on("requestfailed", lambda request: print(f"NET FAILED {request.url} :: {request.failure}"))
-        page.on("pageerror", lambda error: print(f"PAGE ERROR {error}"))
-        page.on("console", lambda message: print(f"BROWSER CONSOLE {message.type}: {message.text}") if message.type == "error" else None)
-        for location, slug in LOCATIONS.items():
-            url = f"https://movementgyms.com/{slug}/calendar/yoga/"
-            try:
-                response = page.goto(url, wait_until="domcontentloaded", timeout=60000)
-                if response is None or response.status >= 400:
-                    raise RuntimeError(f"page returned HTTP {response.status if response else 'no response'}")
-                try:
-                    page.wait_for_function(
-                        "() => document.body && /\\d{1,2}:\\d{2}[ap]\\s+\\d+\\s+min/i.test(document.body.innerText)",
-                        timeout=25000,
-                    )
-                except PlaywrightTimeoutError:
-                    # A location can legitimately have no yoga sessions in the visible week.
-                    page.wait_for_timeout(3000)
-                body_text = page.locator("body").inner_text(timeout=15000)
-                print(f"{location}: rendered body has {len(body_text)} characters; event-pattern matches={len(re.findall(EVENT_RE, body_text))}; day-heading matches={len(re.findall(DAY_RE, body_text))}")
-                try:
-                    parsed = parse_location_text(body_text, location, today)
-                except Exception as parse_exc:
-                    sample = "\\n".join(body_text.splitlines()[:45])
-                    raise RuntimeError(f"{parse_exc}; page text sample:\\n{sample}") from parse_exc
-                all_events.extend(parsed)
-                print(f"{location}: {len(parsed)} yoga classes")
-            except Exception as exc:
-                failures.append(f"{location}: {exc}")
-        browser.close()
+                    for year, month in sorted(months):
+                        month_key = f"{year:04d}-{month:02d}"
+                        url = f"https://movementgyms.com/api/calendar/{slug}?m={month_key}"
+                        response = api.get(url, timeout=45000)
+                        if not response.ok:
+                            raise RuntimeError(f"API returned HTTP {response.status} for {month_key}")
+                        payload = response.json()
+                        if not isinstance(payload, dict) or not isinstance(payload.get("occurrences"), list):
+                            raise RuntimeError(f"Unexpected API response structure for {month_key}")
+                        if payload.get("failedMonths"):
+                            raise RuntimeError(f"Movement reported unavailable schedule data: {payload['failedMonths']}")
+                        for item in payload["occurrences"]:
+                            if not isinstance(item, dict) or str(item.get("discipline", "")).lower() != "yoga":
+                                continue
+                            try:
+                                class_date = date.fromisoformat(item["date"])
+                                if not today <= class_date <= last_day:
+                                    continue
+                                clock = datetime.strptime(item["time"], "%H:%M").time()
+                                start = datetime.combine(class_date, clock, TZ)
+                                duration = int(item["durationMinutes"])
+                                if duration <= 0:
+                                    raise ValueError("non-positive duration")
+                                name = str(item.get("name") or "Yoga")
+                                instructor = str(item.get("instructor") or "").strip()
+                                details = f"{name} with {instructor}" if instructor else name
+                                location_events.append({
+                                    "location": location,
+                                    "start": start,
+                                    "end": start + timedelta(minutes=duration),
+                                    "details": details,
+                                    "source": str(item.get("signUpLink") or f"https://movementgyms.com/{slug}/calendar/yoga/"),
+                                })
+                            except (KeyError, TypeError, ValueError) as exc:
+                                raise RuntimeError(f"Invalid yoga occurrence record: {item!r}: {exc}") from exc
+                    all_events.extend(location_events)
+                    print(f"{location}: {len(location_events)} yoga classes in {today} through {last_day}", flush=True)
+                except Exception as exc:
+                    failures.append(f"{location}: {exc}")
+        finally:
+            api.dispose()
 
     if failures:
-        raise RuntimeError("One or more location calendars could not be read; not publishing a partial calendar:\n" + "\n".join(failures))
+        raise RuntimeError("One or more location APIs could not be read; not publishing a partial calendar:\\n" + "\\n".join(failures))
     if not all_events:
-        raise RuntimeError("No yoga classes were found across all six locations; refusing to publish an empty calendar.")
+        raise RuntimeError("No yoga classes were returned for the next eight calendar days; refusing to publish an empty calendar.")
 
-    # Deduplicate repeated entries that can appear in Movement's calendar markup.
     unique = {}
     for event in all_events:
         key = (event["location"], event["start"], event["details"])
