@@ -1,7 +1,7 @@
 name: Update Movement yoga calendar
 
 on:
-  # Temporary diagnostic trigger, limited to scraper changes. Remove after one run.
+  # Manual-only while scraper is being diagnosed.
   workflow_dispatch:
 permissions:
   contents: write
