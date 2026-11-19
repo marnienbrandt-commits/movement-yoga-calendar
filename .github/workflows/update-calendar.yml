@@ -1,10 +1,7 @@
 name: Update Movement yoga calendar
 
 on:
-  # Temporary single test; remove after the generated calendar is committed.
-  push:
-    paths:
-      - 'scripts/build_calendar.py'
+  # Manual-only until hosting and daily refresh are enabled.
   workflow_dispatch:
 permissions:
   contents: write
