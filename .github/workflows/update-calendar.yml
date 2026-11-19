@@ -1,7 +1,10 @@
 name: Update Movement yoga calendar
 
 on:
-  # Manual-only while scraper is being diagnosed.
+  # Temporary single test of the API-based builder.
+  push:
+    paths:
+      - 'scripts/build_calendar.py'
   workflow_dispatch:
 permissions:
   contents: write
