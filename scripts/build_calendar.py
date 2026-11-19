@@ -103,6 +103,31 @@ def scrape() -> list[dict]:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page(locale="en-US", timezone_id="America/Denver")
+
+        # Diagnostic capture: identify the actual schedule-data request and failures.
+        def log_request(request):
+            u = request.url.lower()
+            if any(term in u for term in ("api", "calendar", "graphql", "wp-json", "schedule", "class", "portal")):
+                print(f"NET REQUEST {request.method} {request.url}")
+        def log_response(response):
+            u = response.url.lower()
+            if any(term in u for term in ("api", "calendar", "graphql", "wp-json", "schedule", "class", "portal")):
+                try:
+                    ctype = response.headers.get("content-type", "")
+                except Exception:
+                    ctype = ""
+                print(f"NET RESPONSE {response.status} {ctype} {response.url}")
+                if "json" in ctype.lower():
+                    try:
+                        body = response.text()
+                        print(f"NET JSON SAMPLE {response.url} {body[:1200]}")
+                    except Exception as exc:
+                        print(f"NET JSON READ ERROR {response.url}: {exc}")
+        page.on("request", log_request)
+        page.on("response", log_response)
+        page.on("requestfailed", lambda request: print(f"NET FAILED {request.url} :: {request.failure}"))
+        page.on("pageerror", lambda error: print(f"PAGE ERROR {error}"))
+        page.on("console", lambda message: print(f"BROWSER CONSOLE {message.type}: {message.text}") if message.type == "error" else None)
         for location, slug in LOCATIONS.items():
             url = f"https://movementgyms.com/{slug}/calendar/yoga/"
             try:
@@ -118,6 +143,7 @@ def scrape() -> list[dict]:
                     # A location can legitimately have no yoga sessions in the visible week.
                     page.wait_for_timeout(3000)
                 body_text = page.locator("body").inner_text(timeout=15000)
+                print(f"{location}: rendered body has {len(body_text)} characters; event-pattern matches={len(re.findall(EVENT_RE, body_text))}; day-heading matches={len(re.findall(DAY_RE, body_text))}")
                 try:
                     parsed = parse_location_text(body_text, location, today)
                 except Exception as parse_exc:
