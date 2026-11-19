@@ -1,7 +1,10 @@
 name: Update Movement yoga calendar
 
 on:
-  # Daily schedule paused until the scraper is verified.
+  # Temporary diagnostic trigger, limited to scraper changes. Remove after one run.
+  push:
+    paths:
+      - 'scripts/build_calendar.py'
   workflow_dispatch:
 permissions:
   contents: write
