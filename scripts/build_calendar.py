@@ -7,6 +7,7 @@ No credentials or private account data are used.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -119,8 +120,15 @@ def scrape() -> list[dict]:
                 print(f"NET RESPONSE {response.status} {ctype} {response.url}")
                 if "json" in ctype.lower():
                     try:
-                        body = response.text()
-                        print(f"NET JSON SAMPLE {response.url} {body[:1200]}")
+                        data = response.json()
+                        print(f"NET JSON KEYS {response.url}: {list(data.keys()) if isinstance(data, dict) else type(data).__name__}")
+                        if isinstance(data, dict):
+                            for key, value in data.items():
+                                if isinstance(value, list):
+                                    first = value[0] if value else None
+                                    print(f"NET JSON FIELD {key}: count={len(value)} first_type={type(first).__name__} first_sample={json.dumps(first, ensure_ascii=False)[:1800]}")
+                                else:
+                                    print(f"NET JSON FIELD {key}: type={type(value).__name__} sample={str(value)[:300]}")
                     except Exception as exc:
                         print(f"NET JSON READ ERROR {response.url}: {exc}")
         page.on("request", log_request)
